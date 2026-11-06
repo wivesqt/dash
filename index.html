@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Прыг-квадрат</title>
+<style>
+:root{--bg:#f1f0fa;--fg:#1b1840;--mut:#5d5a85;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e0c26;--fg:#f1f0fa;--mut:#9b98c8}}
+:root[data-theme="dark"]{--bg:#0e0c26;--fg:#f1f0fa;--mut:#9b98c8}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+canvas{width:100%;max-width:900px;height:62vh;min-height:260px;border-radius:14px;display:block}
+p{margin:0;color:var(--mut);font-size:15px;text-align:center}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<p>Нажми на экран или пробел, чтобы прыгнуть. Удерживай, чтобы прыгать снова.</p>
+<script>
+(function(){
+var cv=document.getElementById('c'),ctx=cv.getContext('2d');
+var W=800,H=480,G=H-110,S=40,sc=1;
+var dist,speed,y,vy,grounded,rot,state='ready',obs,nextX,held=false,best=0,deadAt=0,parts=[];
+try{best=+localStorage.getItem('dash-best')||0}catch(e){}
+function resize(){
+  var r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;
+  cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);
+  H=Math.max(360,Math.min(800,W*r.height/r.width));G=H-110;sc=cv.width/W;
+}
+window.addEventListener('resize',resize);resize();
+function reset(){dist=0;speed=380;y=G-S;vy=0;grounded=true;rot=0;obs=[];nextX=900;parts=[];gen();}
+function gen(){
+  while(nextX<dist+W+500){
+    var r=Math.random(),n=dist>3000?3:2,k=Math.floor(Math.random()*5),x=nextX,w=0;
+    if(k<3){var c=Math.min(k+1,n);for(var i=0;i<c;i++)obs.push({t:'s',x:x+i*S,w:S,h:S});w=c*S;}
+    else if(k===3){obs.push({t:'b',x:x,w:S,h:S});w=S;}
+    else{obs.push({t:'b',x:x,w:S*3,h:S});w=S*3;}
+    nextX=x+w+300+Math.random()*220;
+  }
+}
+function die(){
+  state='dead';deadAt=performance.now();
+  var sc2=Math.floor(dist/10);
+  if(sc2>best){best=sc2;try{localStorage.setItem('dash-best',best)}catch(e){}}
+  for(var i=0;i<24;i++)parts.push({x:110+S/2,y:y+S/2,vx:(Math.random()-.5)*600,vy:-Math.random()*500,l:1});
+}
+function update(dt){
+  if(state==='dead'){for(var i=0;i<parts.length;i++){var p=parts[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=1800*dt;p.l-=dt;}return;}
+  if(state!=='play')return;
+  dist+=speed*dt;speed=380+Math.min(dist/60,110);
+  if(held&&grounded){vy=-760;grounded=false;}
+  vy+=2500*dt;var pb=y+S;y+=vy*dt;grounded=false;
+  if(y>=G-S){y=G-S;vy=0;grounded=true;}
+  var px=dist+110;
+  for(var i=0;i<obs.length;i++){
+    var o=obs[i];if(o.x>px+S+10||o.x+o.w<px-10)continue;
+    if(o.t==='s'){
+      if(px+S-8>o.x+12&&px+8<o.x+o.w-12&&y+S-6>G-o.h+14){die();return;}
+    }else{
+      var top=G-o.h;
+      if(px+S-6>o.x&&px+6<o.x+o.w){
+        if(y+S>top&&pb<=top+12&&vy>=0){y=top-S;vy=0;grounded=true;}
+        else if(y+S>top+12){die();return;}
+      }
+    }
+  }
+  if(!grounded)rot+=5.2*dt;else rot=Math.round(rot/(Math.PI/2))*(Math.PI/2);
+  obs=obs.filter(function(o){return o.x+o.w>dist-200});gen();
+}
+function draw(){
+  ctx.setTransform(sc,0,0,sc,0,0);
+  var hue=(230+dist/30)%360;
+  var g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'hsl('+hue+',60%,22%)');g.addColorStop(1,'hsl('+((hue+40)%360)+',65%,38%)');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=2;
+  var off=(dist*.4)%80;
+  for(var x=-off;x<W;x+=80){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,G);ctx.stroke();}
+  for(var yy=G;yy>0;yy-=80){ctx.beginPath();ctx.moveTo(0,yy);ctx.lineTo(W,yy);ctx.stroke();}
+  ctx.fillStyle='hsl('+hue+',55%,12%)';ctx.fillRect(0,G,W,H-G);
+  ctx.fillStyle='#fff';ctx.fillRect(0,G,W,3);
+  for(var i=0;i<obs.length;i++){
+    var o=obs[i],sx=o.x-dist;if(sx>W+50||sx+o.w<-50)continue;
+    if(o.t==='s'){ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(sx,G);ctx.lineTo(sx+o.w/2,G-o.h);ctx.lineTo(sx+o.w,G);ctx.closePath();ctx.fill();}
+    else{ctx.fillStyle='#10102c';ctx.fillRect(sx,G-o.h,o.w,o.h);ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.strokeRect(sx+1.5,G-o.h+1.5,o.w-3,o.h-3);}
+  }
+  if(state!=='dead'){
+    ctx.save();ctx.translate(110+S/2,y+S/2);ctx.rotate(rot);
+    ctx.fillStyle='#ffd400';ctx.fillRect(-S/2,-S/2,S,S);
+    ctx.strokeStyle='#10102c';ctx.lineWidth=3;ctx.strokeRect(-S/2+1.5,-S/2+1.5,S-3,S-3);
+    ctx.fillStyle='#10102c';ctx.fillRect(-10,-9,7,7);ctx.fillRect(5,-9,7,7);ctx.fillRect(-9,7,20,4);
+    ctx.restore();
+  }else{
+    for(var j=0;j<parts.length;j++){var p=parts[j];if(p.l>0){ctx.globalAlpha=Math.max(p.l,0);ctx.fillStyle='#ffd400';ctx.fillRect(p.x,p.y,10,10);}}
+    ctx.globalAlpha=1;
+  }
+  ctx.fillStyle='#fff';ctx.textAlign='left';ctx.font='700 28px system-ui,sans-serif';
+  ctx.fillText(Math.floor(dist/10)+' м',20,40);
+  ctx.textAlign='right';ctx.font='500 18px system-ui,sans-serif';ctx.fillText('рекорд '+best+' м',W-20,38);
+  ctx.textAlign='center';
+  if(state==='ready'){ctx.font='700 34px system-ui,sans-serif';ctx.fillText('Нажми, чтобы начать',W/2,H*0.38);}
+  if(state==='dead'){ctx.font='700 36px system-ui,sans-serif';ctx.fillText('Разбился на '+Math.floor(dist/10)+' м',W/2,H*0.36);ctx.font='500 20px system-ui,sans-serif';ctx.fillText('Нажми, чтобы попробовать ещё раз',W/2,H*0.36+36);}
+}
+var last=performance.now();
+function loop(t){var dt=Math.min((t-last)/1000,.033);last=t;update(dt);draw();requestAnimationFrame(loop);}
+function press(){
+  held=true;
+  if(state==='ready'){reset();state='play';}
+  else if(state==='dead'&&performance.now()-deadAt>350){reset();state='play';}
+}
+function release(){held=false;}
+cv.addEventListener('pointerdown',function(e){e.preventDefault();press();});
+window.addEventListener('pointerup',release);window.addEventListener('pointercancel',release);
+window.addEventListener('keydown',function(e){if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();press();}});
+window.addEventListener('keyup',function(e){if(e.code==='Space'||e.code==='ArrowUp')release();});
+reset();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
